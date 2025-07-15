@@ -1,0 +1,6 @@
+#motor / Kconfig
+#必须包含 Zephyr 的主 Kconfig 以初始化核心配置
+source "Kconfig.zephyr" 
+rsource "../modules/lib/motorlib/lib/Kconfig" 
+rsource "../modules/lib/motorlib/lib/motor/Kconfig.motor" 
+rsource "Kconfig.app"

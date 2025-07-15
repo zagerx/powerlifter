@@ -36,3 +36,13 @@ manifest:
     - name: CommonLibrary
       path: modules/lib/CommonLibrary
       revision: master
+
+    - name: syrius-dts
+      path: syrius-dts/
+      remote: origin  # 改为存在的 remote
+      revision: master
+    
+    - name: syrius-boards
+      path: syrius-boards/
+      remote: origin  # 改为存在的 remote
+      revision: master
