@@ -1,0 +1,38 @@
+manifest:
+  self:
+    path: powerlifter  # 修正拼写错误
+
+  remotes:
+    - name: github
+      url-base: ssh://git@github.com 
+    - name: origin 
+      url-base: ssh://git@github.com/zagerx  # 改为 SSH 协议
+
+  defaults:
+    remote: origin
+    revision: master
+
+  projects:
+    - name: zephyr
+      remote: github
+      repo-path: zephyrproject-rtos/zephyr
+      revision: v4.1.0
+      import:
+        name-allowlist:
+          - cmsis
+          - cmsis-dsp
+          - hal_stm32
+          - segger
+  
+    - name: ProtocolV4
+      path: modules/lib/ProtocolV4
+      submodules: true
+      revision: master
+
+    - name: motorlib
+      path: modules/lib/motorlib
+      revision: master
+
+    - name: CommonLibrary
+      path: modules/lib/CommonLibrary
+      revision: master
