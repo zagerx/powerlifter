@@ -26,12 +26,12 @@ enum {
 	ELEVATOR_MOTOR_FAULT,
 };
 /* Device tree node aliases */
-#define LED0_NODE          DT_ALIAS(led0)
+#define LED0_NODE	   DT_ALIAS(led0)
 #define MOT12_BRK_PIN_NODE DT_NODELABEL(mot12_brk_pin)
-#define ENCODER_VCC        DT_NODELABEL(encoder_vcc)
-#define W_DOG              DT_NODELABEL(wdog)
-#define P_SWITCH           DT_NODELABEL(proximity_switch)
-#define STOP_BUTTON        DT_NODELABEL(stopbutton)
+#define ENCODER_VCC	   DT_NODELABEL(encoder_vcc)
+#define W_DOG		   DT_NODELABEL(wdog)
+#define P_SWITCH	   DT_NODELABEL(proximity_switch)
+#define STOP_BUTTON	   DT_NODELABEL(stopbutton)
 
 /* GPIO device specification */
 const struct gpio_dt_spec led = GPIO_DT_SPEC_GET(LED0_NODE, gpios);
@@ -176,6 +176,10 @@ static void super_elevator_task(void *obj)
 		break;
 	case ELEVATOR_MOTOR_FAULT:
 		gpio_pin_set_dt(&mot12_brk, 0);
+		if (motor_get_state(motor) == MOTOR_STATE_IDLE) {
+			gpio_pin_set_dt(&mot12_brk, 1);
+			elevator_fsm->chState = ELEVATOR_INIT;
+		}
 		break;
 	case EXIT:
 		break;
@@ -298,7 +302,7 @@ static void super_thread_entry(void *p1, void *p2, void *p3)
  */
 struct motor_thread_data {
 	const struct device *motor_dev; ///< Motor device pointer
-	struct k_thread thread;         ///< Thread control block
+	struct k_thread thread;		///< Thread control block
 };
 
 /**
