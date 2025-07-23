@@ -1,191 +1,48 @@
 #include <stdint.h>
 #include <zephyr/kernel.h>
+#include <zephyr/init.h>
 #include "statemachine.h"
 #include "zephyr/device.h"
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/logging/log.h>
 #include <lib/bldcmotor/motor.h>
+#include "s_posi_planning.h"
+#include <lib/foc/foc.h>
+
 /* Module logging setup */
 LOG_MODULE_REGISTER(super_thread, LOG_LEVEL_DBG);
 
+/* Device tree node aliases */
+#define LED0_NODE	       DT_ALIAS(led0)
+#define MOT12_BRK_PIN_NODE     DT_NODELABEL(mot12_brk_pin)
+#define ENCODER_VCC	       DT_NODELABEL(encoder_vcc)
+#define W_DOG		       DT_NODELABEL(wdog)
+#define P_SWITCH	       DT_NODELABEL(proximity_switch)
+#define STOP_BUTTON	       DT_NODELABEL(stopbutton)
+#define ZERO_POSI_IOSTATE      (1)
+#define EMERGENCY_STOP_IOSTATE (1)
+#define RISING_CMD	       (1)
+#define FALLING_CMD	       (2)
+#define RISING_DIS	       3000.0f
 K_THREAD_STACK_DEFINE(super_thread_stack, 2048);
 
+uint8_t conctrl_cmd = 0;
 static fsm_cb_t elevator_handle = {
 	.chState = 0,
 };
-uint8_t conctrl_cmd = 0;
-#define RISING_DIS 3000.0f
-enum {
-	ELEVATOR_INIT = USER_STATUS,
-	ELEVATOR_FINDZERO,
-	ELEVATOR_ZERO,
-	ELEVATOR_ISZERO,
-	ELEVATOR_ISEND,
-	ELEVATOR_END,
-	ELEVATOR_STOP,
-	ELEVATOR_MOTOR_FAULT,
-};
-/* Device tree node aliases */
-#define LED0_NODE	   DT_ALIAS(led0)
-#define MOT12_BRK_PIN_NODE DT_NODELABEL(mot12_brk_pin)
-#define ENCODER_VCC	   DT_NODELABEL(encoder_vcc)
-#define W_DOG		   DT_NODELABEL(wdog)
-#define P_SWITCH	   DT_NODELABEL(proximity_switch)
-#define STOP_BUTTON	   DT_NODELABEL(stopbutton)
-
-/* GPIO device specification */
+static struct k_thread superlift_thread;
 const struct gpio_dt_spec led = GPIO_DT_SPEC_GET(LED0_NODE, gpios);
 
-static void super_elevator_task(void *obj)
-{
+static fsm_rt_t superlift_NoReady(fsm_cb_t *obj);
+static fsm_rt_t superlift_ZeroPoint(fsm_cb_t *obj);
+static fsm_rt_t superlift_Rising(fsm_cb_t *obj);
+static fsm_rt_t superlift_HigPoint(fsm_cb_t *obj);
+static fsm_rt_t superlift_Falling(fsm_cb_t *obj);
+static fsm_rt_t superlift_EmergencyStop(fsm_cb_t *obj);
+static fsm_rt_t superlift_Motorfault(fsm_cb_t *obj);
+static fsm_rt_t superlift_Idle(fsm_cb_t *obj);
 
-	fsm_cb_t *elevator_fsm = &elevator_handle;
-	const struct gpio_dt_spec prx_switch = GPIO_DT_SPEC_GET(P_SWITCH, gpios);
-	const struct device *motor = DEVICE_DT_GET(DT_NODELABEL(motor0));
-	const struct gpio_dt_spec mot12_brk = GPIO_DT_SPEC_GET(MOT12_BRK_PIN_NODE, gpios);
-	const struct gpio_dt_spec stop_bt = GPIO_DT_SPEC_GET(STOP_BUTTON, gpios);
-	/* Run state machine */
-	int switch_state;
-	int8_t stop_state;
-	stop_state = gpio_pin_get_dt(&stop_bt);
-	if (stop_state == 1 && elevator_fsm->chState != ELEVATOR_STOP) {
-		motor_set_state(motor, MOTOR_CMD_SET_DISABLE);
-		gpio_pin_set_dt(&mot12_brk, 0);
-		elevator_fsm->chState = ELEVATOR_STOP;
-	}
-
-	if (elevator_fsm->chState == ELEVATOR_INIT || elevator_fsm->chState == ELEVATOR_FINDZERO ||
-	    elevator_fsm->chState == ELEVATOR_ISEND || elevator_fsm->chState == ELEVATOR_ISZERO ||
-	    elevator_fsm->chState == ELEVATOR_STOP) {
-		conctrl_cmd = 0;
-	}
-	if (motor_get_state(motor) == MOTOR_STATE_FAULT) {
-		elevator_fsm->chState = ELEVATOR_MOTOR_FAULT;
-	}
-	switch (elevator_fsm->chState) {
-	case ENTER:
-	case ELEVATOR_INIT: {
-		switch_state = gpio_pin_get_dt(&prx_switch);
-		if (switch_state < 0) {
-			LOG_WRN("Failed to read proximity switch");
-		} else { // 电机正转 找零点
-			if (switch_state == 0) {
-				if (motor_get_mode(motor) != MOTOR_MODE_SPEED) {
-					motor_set_mode(motor, MOTOR_MODE_SPEED);
-					LOG_INF("set speed mode");
-				} else {
-					if (motor_get_state(motor) != MOTOR_STATE_READY) {
-						motor_set_state(motor, MOTOR_CMD_SET_ENABLE);
-						LOG_INF("motor enable");
-						break;
-					}
-					motor_set_state(motor, MOTOR_CMD_SET_START);
-					motor_set_target(motor, 2.5f);
-					elevator_fsm->chState = ELEVATOR_FINDZERO;
-				}
-			} else {
-				if (motor_get_mode(motor) != MOTOR_MODE_POSI) {
-					motor_set_mode(motor, MOTOR_MODE_POSI);
-				}
-				elevator_fsm->chState = ELEVATOR_ZERO;
-			}
-			LOG_DBG("Proximity switch state: %d", switch_state);
-		}
-	} break;
-
-	case ELEVATOR_FINDZERO: {
-		switch_state = gpio_pin_get_dt(&prx_switch);
-		if (switch_state == 1) // 找到零点
-		{
-			motor_set_target(motor, 0.0f);
-			motor_set_mode(motor, MOTOR_MODE_POSI);
-			elevator_fsm->chState = ELEVATOR_ZERO;
-		}
-	} break;
-	case ELEVATOR_ZERO: // 零点处
-	{
-		if (motor_get_mode(motor) != MOTOR_MODE_POSI) {
-			break;
-		}
-		gpio_pin_set_dt(&mot12_brk, 0);
-		motor_set_state(motor, MOTOR_CMD_SET_DISABLE);
-		// 添加对顶升命令的响应
-		if (conctrl_cmd != 1) {
-			break;
-		}
-		gpio_pin_set_dt(&mot12_brk, 1);
-		if (motor_get_state(motor) != MOTOR_STATE_READY) {
-			float posi = -RISING_DIS;
-			motor_set_target(motor, posi);
-			motor_set_state(motor, MOTOR_CMD_SET_ENABLE);
-			break;
-		}
-		motor_set_state(motor, MOTOR_CMD_SET_START);
-		conctrl_cmd = 0;
-		elevator_fsm->chState = ELEVATOR_ISEND;
-	} break;
-
-	case ELEVATOR_ISEND: // 等待5s使其达到远端
-	{
-		{
-			static uint16_t conut = 0;
-			conut++;
-			if (fabsf(motor_get_curposi(motor)) < RISING_DIS - 0.001f) // 已经到达位置
-			{
-				break;
-			}
-
-			if (conut > 4500) {
-				conut = 0;
-				gpio_pin_set_dt(&mot12_brk, 0);
-				motor_set_state(motor, MOTOR_CMD_SET_DISABLE);
-				elevator_fsm->chState = ELEVATOR_END;
-			}
-		}
-	} break;
-
-	case ELEVATOR_END: {
-		// 1、等待回零点指令
-		if (conctrl_cmd != 2) {
-			break;
-		}
-		gpio_pin_set_dt(&mot12_brk, 1);
-		if (motor_get_state(motor) != MOTOR_STATE_READY) {
-			float posi = RISING_DIS + 50;
-			motor_set_target(motor, posi);
-			motor_set_state(motor, MOTOR_CMD_SET_ENABLE);
-			break;
-		}
-		motor_set_state(motor, MOTOR_CMD_SET_START);
-		conctrl_cmd = 0;
-		elevator_fsm->chState = ELEVATOR_ISZERO;
-	} break;
-
-	case ELEVATOR_ISZERO: // 是否回到零点
-		switch_state = gpio_pin_get_dt(&prx_switch);
-		if (switch_state != 1) {
-			break;
-		}
-		elevator_fsm->chState = ELEVATOR_ZERO;
-		break;
-	case ELEVATOR_STOP:
-		if (stop_state == 0) {
-			gpio_pin_set_dt(&mot12_brk, 1);
-			elevator_fsm->chState = ELEVATOR_INIT;
-		}
-		break;
-	case ELEVATOR_MOTOR_FAULT:
-		gpio_pin_set_dt(&mot12_brk, 0);
-		if (motor_get_state(motor) == MOTOR_STATE_IDLE) {
-			gpio_pin_set_dt(&mot12_brk, 1);
-			elevator_fsm->chState = ELEVATOR_INIT;
-		}
-		break;
-	case EXIT:
-		break;
-	}
-}
-
+/* GPIO device specification */
 /**
    uint8 INIT = 0
    uint8 NOT_READY = 1
@@ -199,20 +56,31 @@ static void super_elevator_task(void *obj)
 int8_t super_elevator_state(void)
 {
 	int16_t state = 0;
-	if (elevator_handle.chState == ELEVATOR_INIT) {
-		state = 0;
-	} else if (elevator_handle.chState == ELEVATOR_FINDZERO) {
+
+	if (elevator_handle.fsm == superlift_NoReady) {
 		state = 1;
-	} else if (elevator_handle.chState == ELEVATOR_ZERO) {
+	} else if (elevator_handle.fsm == superlift_ZeroPoint) {
 		state = 2;
-	} else if (elevator_handle.chState == ELEVATOR_ISEND) {
+	} else if (elevator_handle.fsm == superlift_Rising) {
 		state = 3;
-	} else if (elevator_handle.chState == ELEVATOR_END) {
+	} else if (elevator_handle.fsm == superlift_HigPoint) {
 		state = 4;
-	} else if (elevator_handle.chState == ELEVATOR_ISZERO) {
+	} else if (elevator_handle.fsm == superlift_Falling) {
 		state = 5;
-	} else { // 急停状态，后续补充
-		state = 6;
+	} else if (elevator_handle.fsm == superlift_EmergencyStop) {
+		if (elevator_handle.pre_fsm == superlift_ZeroPoint) {
+			state = 2;
+		} else if (elevator_handle.pre_fsm == superlift_HigPoint) {
+			state = 4;
+		} else if (elevator_handle.pre_fsm == superlift_Falling) {
+			state = 6;
+		} else if (elevator_handle.pre_fsm == superlift_Rising) {
+			state = 6;
+		} else if (elevator_handle.pre_fsm == superlift_NoReady) {
+			state = 1;
+		}
+	} else {
+		state = 255;
 	}
 	return state;
 }
@@ -246,7 +114,7 @@ static void super_thread_entry(void *p1, void *p2, void *p3)
 	if (ret < 0) {
 		LOG_ERR("Failed to configure brake pin (err %d)", ret);
 	}
-
+	gpio_pin_set_dt(&mot12_brk, 0);
 	/* Initialize watchdog pin */
 	const struct gpio_dt_spec w_dog = GPIO_DT_SPEC_GET(W_DOG, gpios);
 	ret = gpio_pin_configure_dt(&w_dog, GPIO_OUTPUT_ACTIVE);
@@ -279,45 +147,444 @@ static void super_thread_entry(void *p1, void *p2, void *p3)
 
 	/* Initial delay for hardware stabilization */
 	k_msleep(10);
+	statemachine_init(&elevator_handle, "superlift_fsm", superlift_Idle, NULL, NULL, 0);
+	const struct device *motor = DEVICE_DT_GET(DT_NODELABEL(motor0));
 
 	/* Main control loop */
 	while (1) {
 		/* Toggle watchdog */
 		gpio_pin_toggle_dt(&w_dog);
 		/* Run motor control tasks */
-		super_elevator_task(NULL);
-
-		// if (motor_get_state(motor) == MOTOR_STATE_FAULT) {
-		// 	gpio_pin_set_dt(&mot12_brk, 0);
-		// } else {
-		// 	gpio_pin_set_dt(&mot12_brk, 1);
-		// }
+		if (motor_get_state(motor) == MOTOR_STATE_FAULT &&
+		    elevator_handle.fsm != superlift_Motorfault) {
+			TRAN_STATE(&elevator_handle, superlift_Motorfault);
+		}
+		DISPATCH_FSM(&elevator_handle);
+		conctrl_cmd = 0;
 		k_msleep(1);
 	}
 }
 
-/**
- * @struct motor_thread_data
- * @brief Motor thread control structure
- */
-struct motor_thread_data {
-	const struct device *motor_dev; ///< Motor device pointer
-	struct k_thread thread;		///< Thread control block
-};
-
-/**
- * @brief Create motor control thread
- * @param dev Unused device pointer
- *
- * Creates high-priority cooperative thread for motor control.
- */
-void creat_super_thread(const struct device *dev)
+static fsm_rt_t superlift_NoReady(fsm_cb_t *obj)
 {
-	static struct motor_thread_data thread_data __aligned(4);
+	enum {
+		RUNING = USER_STATUS,
+		ELEVATOR_WAIT,
+		ELEVATOR_FINDZERO,
+		EMERGENCY_STOP,
+	};
+	const struct gpio_dt_spec prx_switch = GPIO_DT_SPEC_GET(P_SWITCH, gpios);
+	const struct device *motor = DEVICE_DT_GET(DT_NODELABEL(motor0));
+	const struct gpio_dt_spec mot12_brk = GPIO_DT_SPEC_GET(MOT12_BRK_PIN_NODE, gpios);
+	const struct gpio_dt_spec stop_bt = GPIO_DT_SPEC_GET(STOP_BUTTON, gpios);
+	int switch_state;
+	int8_t stop_state;
+	switch_state = gpio_pin_get_dt(&prx_switch);
+	stop_state = gpio_pin_get_dt(&stop_bt);
+	switch (obj->chState) {
+	case ENTER:
+		LOG_INF("enter NoReady");
+		obj->chState = RUNING;
+		break;
+	case RUNING:
+		if (switch_state != ZERO_POSI_IOSTATE) {
+			if (stop_state == EMERGENCY_STOP_IOSTATE) {
+				TRAN_STATE(&elevator_handle, superlift_EmergencyStop);
+				break;
+			}
+			if (conctrl_cmd == FALLING_CMD) {
+				conctrl_cmd = 0;
+				if (motor_get_mode(motor) != MOTOR_MODE_SPEED) {
+					motor_set_mode(motor, MOTOR_MODE_SPEED);
+				}
+				obj->chState = ELEVATOR_WAIT;
+			}
+		} else {
+			TRAN_STATE(&elevator_handle, superlift_ZeroPoint);
+		}
+		break;
+	case ELEVATOR_WAIT:
+		if (motor_get_state(motor) != MOTOR_STATE_READY) {
+			motor_set_state(motor, MOTOR_CMD_SET_ENABLE);
+			LOG_INF("motor enable");
+			break;
+		}
+		gpio_pin_set_dt(&mot12_brk, 1);
+		motor_set_state(motor, MOTOR_CMD_SET_START);
+		motor_set_target(motor, 2.5f);
+		obj->chState = ELEVATOR_FINDZERO;
+		break;
+	case ELEVATOR_FINDZERO:
+		if (stop_state == EMERGENCY_STOP_IOSTATE) {
+			TRAN_STATE(&elevator_handle, superlift_EmergencyStop);
+			break;
+		}
 
-	k_thread_create(&thread_data.thread, super_thread_stack,
+		if (switch_state == 1) {
+			// motor_set_target(motor, 0.0f);
+			// motor_set_mode(motor, MOTOR_MODE_POSI);
+			TRAN_STATE(&elevator_handle, superlift_ZeroPoint);
+		}
+		break;
+
+	case EXIT:
+		gpio_pin_set_dt(&mot12_brk, 0);
+		motor_set_state(motor, MOTOR_CMD_SET_DISABLE);
+		LOG_INF("exit NoReady");
+		break;
+	default:
+		break;
+	}
+	return 0;
+}
+
+static fsm_rt_t superlift_ZeroPoint(fsm_cb_t *obj)
+{
+	enum {
+		RUNING = USER_STATUS,
+		READY,
+		READY1
+	};
+	// const struct gpio_dt_spec prx_switch = GPIO_DT_SPEC_GET(P_SWITCH, gpios);
+	const struct device *motor = DEVICE_DT_GET(DT_NODELABEL(motor0));
+	const struct gpio_dt_spec mot12_brk = GPIO_DT_SPEC_GET(MOT12_BRK_PIN_NODE, gpios);
+	const struct gpio_dt_spec stop_bt = GPIO_DT_SPEC_GET(STOP_BUTTON, gpios);
+	int8_t stop_state;
+	switch (obj->chState) {
+	case ENTER:
+		LOG_INF("enter ZeroPoint motor_mode:%d", motor_get_mode(motor));
+
+		if (motor_get_mode(motor) != MOTOR_MODE_POSI) {
+			motor_set_mode(motor, MOTOR_MODE_POSI);
+			break;
+		}
+		gpio_pin_set_dt(&mot12_brk, 0);
+		motor_set_state(motor, MOTOR_CMD_SET_DISABLE);
+		obj->chState = RUNING;
+		break;
+	case RUNING:
+		stop_state = gpio_pin_get_dt(&stop_bt);
+		if (stop_state == EMERGENCY_STOP_IOSTATE) {
+			TRAN_STATE(&elevator_handle, superlift_EmergencyStop);
+			break;
+		}
+		if (conctrl_cmd != RISING_CMD) {
+			break;
+		}
+		obj->chState = READY;
+		break;
+	case READY:
+		motor_clear_realodom(motor, 0.0f);
+		gpio_pin_set_dt(&mot12_brk, 1);
+		if (motor_get_state(motor) != MOTOR_STATE_READY) {
+			float posi = -RISING_DIS;
+			motor_set_targetPosi(motor, posi, 0.0f);
+			motor_set_state(motor, MOTOR_CMD_SET_ENABLE);
+			break;
+		}
+		motor_set_state(motor, MOTOR_CMD_SET_START);
+		obj->chState = READY1;
+		break;
+	case READY1:
+		if (motor_get_state(motor) == MOTOR_STATE_CLOSED_LOOP) {
+			TRAN_STATE(&elevator_handle, superlift_Rising);
+		}
+		break;
+	case EXIT:
+		LOG_INF("exit ZeroPoint");
+		break;
+	default:
+		break;
+	}
+	return 0;
+}
+
+static fsm_rt_t superlift_Rising(fsm_cb_t *obj)
+{
+	enum {
+		RUNING = USER_STATUS,
+		EMERGENCY_STOP,
+		EMERGENCY_STOP_RISING,
+		EMERGENCY_STOP_FALLING
+	};
+	static uint16_t conut = 0;
+
+	const struct device *motor = DEVICE_DT_GET(DT_NODELABEL(motor0));
+	const struct gpio_dt_spec stop_bt = GPIO_DT_SPEC_GET(STOP_BUTTON, gpios);
+	int8_t stop_state;
+	stop_state = gpio_pin_get_dt(&stop_bt);
+
+	switch (obj->chState) {
+	case ENTER:
+		LOG_INF("enter Rising");
+		conut = 0;
+		obj->chState = RUNING;
+		break;
+	case RUNING:
+		if (stop_state == EMERGENCY_STOP_IOSTATE) {
+			TRAN_STATE(obj, superlift_EmergencyStop);
+			break;
+		}
+		if (fabsf(motor_get_curposi(motor)) < RISING_DIS - 0.001f) // 已经到达位置
+		{
+			conut = 0;
+			break;
+		}
+		conut++;
+		if (conut > 2500) {
+			conut = 0;
+			TRAN_STATE(&elevator_handle, superlift_HigPoint);
+		}
+		break;
+	case EXIT:
+		LOG_INF("exit Rising");
+		break;
+	default:
+		break;
+	}
+	return 0;
+}
+
+static fsm_rt_t superlift_HigPoint(fsm_cb_t *obj)
+{
+	enum {
+		RUNING = USER_STATUS,
+		READY,
+	};
+	const struct device *motor = DEVICE_DT_GET(DT_NODELABEL(motor0));
+	const struct gpio_dt_spec mot12_brk = GPIO_DT_SPEC_GET(MOT12_BRK_PIN_NODE, gpios);
+	const struct gpio_dt_spec stop_bt = GPIO_DT_SPEC_GET(STOP_BUTTON, gpios);
+
+	int8_t stop_state;
+	stop_state = gpio_pin_get_dt(&stop_bt);
+
+	switch (obj->chState) {
+	case ENTER:
+		LOG_INF("enter HigPoint");
+		gpio_pin_set_dt(&mot12_brk, 0);
+		motor_set_state(motor, MOTOR_CMD_SET_DISABLE);
+		obj->chState = RUNING;
+		break;
+	case RUNING:
+		if (stop_state == EMERGENCY_STOP_IOSTATE) {
+			TRAN_STATE(&elevator_handle, superlift_EmergencyStop);
+			break;
+		}
+		// 急停解除
+		if (conctrl_cmd != FALLING_CMD) {
+			break;
+		}
+		// 准备下降
+		obj->chState = READY;
+		break;
+	case READY:
+		gpio_pin_set_dt(&mot12_brk, 1);
+		if (motor_get_state(motor) != MOTOR_STATE_READY) {
+			float posi;
+			posi = motor_get_curposi(motor);
+			motor_set_targetPosi(motor, 0.0f, posi);
+			motor_set_state(motor, MOTOR_CMD_SET_ENABLE);
+			break;
+		}
+		motor_set_state(motor, MOTOR_CMD_SET_START);
+		TRAN_STATE(&elevator_handle, superlift_Falling);
+		break;
+	case EXIT:
+		LOG_INF("exit HigPoint");
+		break;
+	default:
+		break;
+	}
+	return 0;
+}
+
+static fsm_rt_t superlift_Falling(fsm_cb_t *obj)
+{
+	enum {
+		RUNING = USER_STATUS,
+		EMERGENCY_STOP,
+		EMERGENCY_STOP_RISING,
+		EMERGENCY_STOP_FALLING
+	};
+	const struct gpio_dt_spec prx_switch = GPIO_DT_SPEC_GET(P_SWITCH, gpios);
+	const struct gpio_dt_spec stop_bt = GPIO_DT_SPEC_GET(STOP_BUTTON, gpios);
+
+	int switch_state;
+	int8_t stop_state;
+	stop_state = gpio_pin_get_dt(&stop_bt);
+
+	switch (obj->chState) {
+	case ENTER:
+		LOG_INF("enter Falling");
+		obj->chState = RUNING;
+		break;
+	case RUNING:
+		if (stop_state == EMERGENCY_STOP_IOSTATE) {
+			TRAN_STATE(obj, superlift_EmergencyStop);
+			break;
+		}
+		switch_state = gpio_pin_get_dt(&prx_switch);
+		if (switch_state != 1) {
+			break;
+		}
+		TRAN_STATE(&elevator_handle, superlift_ZeroPoint);
+		break;
+	case EXIT:
+		LOG_INF("exit Falling");
+		break;
+	default:
+		break;
+	}
+	return 0;
+}
+
+static fsm_rt_t superlift_EmergencyStop(fsm_cb_t *obj)
+{
+	enum {
+		RUNING = USER_STATUS,
+		SET_RISING_DIS,
+		SET_FALLING_DIS,
+		SET_RISING_MOTOR_ENABLE,
+		SET_FALLING_MOTOR_ENABLE
+	};
+	const struct gpio_dt_spec mot12_brk = GPIO_DT_SPEC_GET(MOT12_BRK_PIN_NODE, gpios);
+	const struct gpio_dt_spec stop_bt = GPIO_DT_SPEC_GET(STOP_BUTTON, gpios);
+	const struct device *motor = DEVICE_DT_GET(DT_NODELABEL(motor0));
+
+	// int switch_state;
+	int8_t stop_state;
+	stop_state = gpio_pin_get_dt(&stop_bt);
+	switch (obj->chState) {
+	case ENTER:
+		gpio_pin_set_dt(&mot12_brk, 0);
+		motor_set_state(motor, MOTOR_CMD_SET_DISABLE);
+		LOG_INF("enter EmergencyStop");
+		obj->chState = RUNING;
+		break;
+	case RUNING:
+		if (stop_state != EMERGENCY_STOP_IOSTATE) {
+			if (obj->pre_fsm == superlift_NoReady) {
+				TRAN_STATE(obj, superlift_NoReady);
+				break;
+			} else if (obj->pre_fsm == superlift_ZeroPoint) {
+				TRAN_STATE(obj, superlift_ZeroPoint);
+				break;
+			} else if (obj->pre_fsm == superlift_HigPoint) {
+				TRAN_STATE(obj, superlift_HigPoint);
+				break;
+			} else if (obj->pre_fsm == superlift_Rising ||
+				   obj->pre_fsm == superlift_Falling) {
+				if (conctrl_cmd == RISING_CMD) {
+					gpio_pin_set_dt(&mot12_brk, 1);
+					float posi;
+					posi = motor_get_curposi(motor);
+					motor_set_targetPosi(motor, -RISING_DIS, posi);
+					motor_set_state(motor, MOTOR_CMD_SET_ENABLE);
+					obj->chState = SET_RISING_DIS;
+				} else if (conctrl_cmd == FALLING_CMD) {
+					gpio_pin_set_dt(&mot12_brk, 1);
+					float posi;
+					posi = motor_get_curposi(motor);
+					motor_set_targetPosi(motor, 0.0f, posi);
+					motor_set_state(motor, MOTOR_CMD_SET_ENABLE);
+					obj->chState = SET_FALLING_DIS;
+				}
+				break;
+			}
+		}
+		break;
+	case SET_RISING_DIS:
+		motor_set_state(motor, MOTOR_CMD_SET_START);
+		obj->chState = SET_RISING_MOTOR_ENABLE;
+		break;
+	case SET_FALLING_DIS:
+		motor_set_state(motor, MOTOR_CMD_SET_START);
+		obj->chState = SET_FALLING_MOTOR_ENABLE;
+		break;
+	case SET_RISING_MOTOR_ENABLE:
+		if (motor_get_state(motor) == MOTOR_STATE_CLOSED_LOOP) {
+			LOG_INF("motor enter close loop");
+		}
+		TRAN_STATE(obj, superlift_Rising);
+		break;
+	case SET_FALLING_MOTOR_ENABLE:
+		TRAN_STATE(obj, superlift_Falling);
+		break;
+	case EXIT:
+		LOG_INF("exit EmergencyStop");
+		break;
+	default:
+		break;
+	}
+	return 0;
+}
+#include <zephyr/sys/reboot.h>
+static fsm_rt_t superlift_Motorfault(fsm_cb_t *obj)
+{
+	enum {
+		RUNING = USER_STATUS,
+	};
+	const struct device *motor = DEVICE_DT_GET(DT_NODELABEL(motor0));
+	const struct gpio_dt_spec mot12_brk = GPIO_DT_SPEC_GET(MOT12_BRK_PIN_NODE, gpios);
+	static uint16_t motor_count = 0;
+	switch (obj->chState) {
+	case ENTER:
+		LOG_INF("enter Motorfault");
+		gpio_pin_set_dt(&mot12_brk, 0);
+		motor_set_state(motor, MOTOR_CMD_SET_DISABLE);
+		motor_count = 0;
+		obj->chState = RUNING;
+		break;
+	case RUNING:
+		if (motor_get_state(motor) == MOTOR_STATE_IDLE) {
+			if (motor_count++ > 3000) {
+				// TRAN_STATE(obj, superlift_Idle);
+				sys_reboot(SYS_REBOOT_COLD);
+			}
+		} else {
+			motor_count = 0;
+		}
+		break;
+	case EXIT:
+		LOG_INF("exit Motorfault");
+		break;
+	default:
+		break;
+	}
+	return 0;
+}
+static fsm_rt_t superlift_Idle(fsm_cb_t *obj)
+{
+	enum {
+		RUNING = USER_STATUS,
+	};
+
+	switch (obj->chState) {
+	case ENTER:
+		LOG_INF("enter Superlift Idle");
+		obj->chState = RUNING;
+		break;
+	case RUNING:
+		k_msleep(1000);
+		TRAN_STATE(obj, superlift_NoReady);
+		break;
+	case EXIT:
+		LOG_INF("exit Superlift Idle");
+		break;
+	default:
+		break;
+	}
+	return 0;
+}
+static int init_super_thread(void)
+{
+
+	k_thread_create(&superlift_thread, super_thread_stack,
 			K_THREAD_STACK_SIZEOF(super_thread_stack), super_thread_entry, NULL, NULL,
 			NULL,
-			K_PRIO_COOP(5), // High priority cooperative thread
+			K_PRIO_COOP(5), // 保持高优先级
 			0, K_NO_WAIT);
+	return 0;
 }
+
+SYS_INIT(init_super_thread, APPLICATION, CONFIG_APPLICATION_INIT_PRIORITY);

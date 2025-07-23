@@ -21,13 +21,13 @@ LOG_MODULE_REGISTER(main, LOG_LEVEL_DBG);
 
 extern void creat_motor_thread(const struct device *dev);
 extern void creat_canard_thread(void);
-extern void creat_super_thread(const struct device *dev);
+// extern void creat_super_thread(const struct device *dev);
 
 int main(void)
 {
 	creat_canard_thread();
 	creat_motor_thread(NULL);
-	creat_super_thread(NULL);
+	// creat_super_thread(NULL);
 	while (1) {
 		k_msleep(1000);
 	}
