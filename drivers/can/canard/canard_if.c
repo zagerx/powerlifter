@@ -250,7 +250,7 @@ static void subscribe_services(void)
 			  CANARD_DEFAULT_TRANSFER_ID_TIMEOUT_USEC, &sub_remote_device);
 	sub_remote_device.user_reference = (void *)handle_operate_remote_device;
 }
-#include <lib/bldcmotor/motor.h>
+#include <lib/motor/motor.h>
 extern uint8_t conctrl_cmd;
 // 远程设备操作处理函数
 static void handle_operate_remote_device(CanardRxTransfer *transfer)

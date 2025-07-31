@@ -5,7 +5,7 @@
 #include "zephyr/device.h"
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/logging/log.h>
-#include <lib/bldcmotor/motor.h>
+#include <lib/motor/motor.h>
 #include "s_posi_planning.h"
 #include <lib/foc/foc.h>
 

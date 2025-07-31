@@ -18,7 +18,7 @@
 #include "zephyr/device.h"
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/logging/log.h>
-#include <lib/bldcmotor/motor.h>
+#include <lib/motor/motor.h>
 #include <fault_monitoring_module.h>
 #include <zephyr/sys/reboot.h>
 
@@ -54,6 +54,8 @@ static void motor_thread_entry(void *p1, void *p2, void *p3)
 {
 	const struct device *motor0 = DEVICE_DT_GET(DT_NODELABEL(motor0));
 	const struct motor_config *cfg = motor0->config;
+	const struct motor_data *m_data = motor0->data;
+
 	int ret;
 
 	const struct gpio_dt_spec mot12_brk = GPIO_DT_SPEC_GET(MOT12_BRK_PIN_NODE, gpios);
@@ -110,7 +112,7 @@ static void motor_thread_entry(void *p1, void *p2, void *p3)
 		// 	break;
 		// }
 
-		DISPATCH_FSM(cfg->fsm);
+		DISPATCH_FSM(m_data->mode_state_mec);
 		gpio_pin_toggle_dt(&w_dog);
 
 		k_msleep(1);
