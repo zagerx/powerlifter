@@ -206,13 +206,13 @@ static void canard_thread(void *p1, void *p2, void *p3)
 	}
 }
 
-void creat_canard_thread(void)
+static int creat_canard_thread(void)
 {
 	k_thread_create(&thread, canard_thread_stack, K_THREAD_STACK_SIZEOF(canard_thread_stack),
-			canard_thread, NULL, NULL, NULL,
-			K_PRIO_COOP(4), // 高优先级协作线程
-			0, K_NO_WAIT);
+			canard_thread, NULL, NULL, NULL, K_PRIO_COOP(4), 0, K_NO_WAIT);
+	return 0;
 }
+SYS_INIT(creat_canard_thread, APPLICATION, CONFIG_APPLICATION_INIT_PRIORITY);
 
 // 订阅服务函数
 static void subscribe_services(void)

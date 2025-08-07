@@ -8,6 +8,8 @@
 #include <lib/motor/motor.h>
 #include "s_posi_planning.h"
 #include <lib/foc/foc.h>
+#include <zephyr/sys/reboot.h>
+#include <zephyr/drivers/sensor.h>
 
 /* Module logging setup */
 LOG_MODULE_REGISTER(super_thread, LOG_LEVEL_DBG);
@@ -151,6 +153,14 @@ static void super_thread_entry(void *p1, void *p2, void *p3)
 	statemachine_init(&elevator_handle, "superlift_fsm", superlift_Idle, NULL, NULL, 0);
 	const struct device *motor = DEVICE_DT_GET(DT_NODELABEL(motor0));
 
+	const struct device *const ina = DEVICE_DT_GET_ONE(ti_ina226);
+	struct sensor_value v_bus, power, current;
+	int rc;
+
+	if (!device_is_ready(ina)) {
+		printf("Device %s is not ready.\n", ina->name);
+		return;
+	}
 	/* Main control loop */
 	while (1) {
 		/* Toggle watchdog */
@@ -162,6 +172,26 @@ static void super_thread_entry(void *p1, void *p2, void *p3)
 		}
 		DISPATCH_FSM(&elevator_handle);
 		conctrl_cmd = 0;
+
+		static int16_t count = 0;
+		if (count++ > 200) {
+			count = 0;
+			rc = sensor_sample_fetch(ina);
+			if (rc) {
+				printf("Could not fetch sensor data.\n");
+				return;
+			}
+
+			sensor_channel_get(ina, SENSOR_CHAN_VOLTAGE, &v_bus);
+			sensor_channel_get(ina, SENSOR_CHAN_POWER, &power);
+			sensor_channel_get(ina, SENSOR_CHAN_CURRENT, &current);
+
+			printf("Bus: %f [V] -- "
+			       "Power: %f [W] -- "
+			       "Current: %f [A]\n",
+			       sensor_value_to_double(&v_bus), sensor_value_to_double(&power),
+			       sensor_value_to_double(&current));
+		}
 		k_msleep(1);
 	}
 }
@@ -510,7 +540,6 @@ static fsm_rt_t superlift_EmergencyStop(fsm_cb_t *obj)
 	}
 	return 0;
 }
-#include <zephyr/sys/reboot.h>
 static fsm_rt_t superlift_Motorfault(fsm_cb_t *obj)
 {
 	enum {
