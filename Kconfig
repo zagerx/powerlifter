@@ -3,4 +3,7 @@
 source "Kconfig.zephyr" 
 rsource "../modules/lib/motorlib/lib/Kconfig" 
 rsource "../modules/lib/motorlib/lib/motor/Kconfig.motor" 
+rsource "drivers/gpio/Kconfig.tca9539" 
+
 rsource "Kconfig.app"
+

@@ -1,0 +1,26 @@
+# TCA9539 GPIO configuration options
+
+# Copyright (c) 2016 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
+menuconfig GPIO_TCA9539
+	bool "TCA9539 I2C-based GPIO chip"
+	default y
+	depends on DT_HAS_TI_TCA9539_ENABLED
+	depends on I2C
+	help
+	  Enable driver for TCA9539 I2C-based GPIO chip.
+config GPIO_TCA9539_INIT_PRIORITY
+	int "Init priority"
+	default 70
+	depends on GPIO_TCA9539
+	help
+	  Device driver initialization priority.
+
+config GPIO_TCA9539_INTERRUPT
+	bool "Interrupt enable"
+	depends on GPIO_TCA9539
+	help
+	  Enable interrupt support in TCA9539 driver.
+	  Note that the TCA9539 cannot reliably detect
+	  short-pulse interrupts due to its design.
