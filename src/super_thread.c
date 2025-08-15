@@ -15,12 +15,14 @@
 LOG_MODULE_REGISTER(super_thread, LOG_LEVEL_DBG);
 
 /* Device tree node aliases */
-#define LED0_NODE	       DT_ALIAS(led0)
-#define MOT12_BRK_PIN_NODE     DT_NODELABEL(mot12_brk_pin)
-#define ENCODER_VCC	       DT_NODELABEL(encoder_vcc)
-#define W_DOG		       DT_NODELABEL(wdog)
-#define P_SWITCH	       DT_NODELABEL(proximity_switch)
-#define STOP_BUTTON	       DT_NODELABEL(stopbutton)
+#define LED0_NODE	   DT_ALIAS(led0)
+#define MOT12_BRK_PIN_NODE DT_NODELABEL(mot12_brk_pin)
+#define ENCODER_VCC	   DT_NODELABEL(encoder_vcc)
+#define W_DOG		   DT_NODELABEL(wdog)
+#define P_SWITCH	   DT_NODELABEL(proximity_switch)
+#define STOP_BUTTON	   DT_NODELABEL(stopbutton)
+#define RUNING_LED	   DT_NODELABEL(run_led)
+
 #define ZERO_POSI_IOSTATE      (1)
 #define EMERGENCY_STOP_IOSTATE (1)
 #define RISING_CMD	       (1)
@@ -148,6 +150,11 @@ static void super_thread_entry(void *p1, void *p2, void *p3)
 		LOG_INF("stop button configured");
 	}
 
+	const struct gpio_dt_spec runled = GPIO_DT_SPEC_GET(RUNING_LED, gpios);
+	ret = gpio_pin_configure_dt(&runled, GPIO_OUTPUT_ACTIVE);
+	if (ret < 0) {
+		LOG_ERR("Failed to configure watchdog pin (err %d)", ret);
+	}
 	/* Initial delay for hardware stabilization */
 	k_msleep(10);
 	statemachine_init(&elevator_handle, "superlift_fsm", superlift_Idle, NULL, NULL, 0);
@@ -176,21 +183,22 @@ static void super_thread_entry(void *p1, void *p2, void *p3)
 		static int16_t count = 0;
 		if (count++ > 200) {
 			count = 0;
-			rc = sensor_sample_fetch(ina);
-			if (rc) {
-				printf("Could not fetch sensor data.\n");
-				return;
-			}
+			// rc = sensor_sample_fetch(ina);
+			// if (rc) {
+			// 	printf("Could not fetch sensor data.\n");
+			// 	return;
+			// }
 
-			sensor_channel_get(ina, SENSOR_CHAN_VOLTAGE, &v_bus);
-			sensor_channel_get(ina, SENSOR_CHAN_POWER, &power);
-			sensor_channel_get(ina, SENSOR_CHAN_CURRENT, &current);
+			// sensor_channel_get(ina, SENSOR_CHAN_VOLTAGE, &v_bus);
+			// sensor_channel_get(ina, SENSOR_CHAN_POWER, &power);
+			// sensor_channel_get(ina, SENSOR_CHAN_CURRENT, &current);
 
-			printf("Bus: %f [V] -- "
-			       "Power: %f [W] -- "
-			       "Current: %f [A]\n",
-			       sensor_value_to_double(&v_bus), sensor_value_to_double(&power),
-			       sensor_value_to_double(&current));
+			// printf("Bus: %f [V] -- "
+			//        "Power: %f [W] -- "
+			//        "Current: %f [A]\n",
+			//        sensor_value_to_double(&v_bus), sensor_value_to_double(&power),
+			//        sensor_value_to_double(&current));
+			gpio_pin_toggle_dt(&runled);
 		}
 		k_msleep(1);
 	}

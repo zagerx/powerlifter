@@ -7,6 +7,7 @@ project(super)
 
 # 添加子目录，假设 drivers/can 是当前项目的子目录
 add_subdirectory(drivers/can)
+add_subdirectory(drivers/gpio)
 
 
 # 添加motorlib库
