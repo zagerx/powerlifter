@@ -45,6 +45,7 @@ static fsm_rt_t superlift_Falling(fsm_cb_t *obj);
 static fsm_rt_t superlift_EmergencyStop(fsm_cb_t *obj);
 static fsm_rt_t superlift_Motorfault(fsm_cb_t *obj);
 static fsm_rt_t superlift_Idle(fsm_cb_t *obj);
+enum motor_fault_code motor_get_falutcode(const struct device *motor);
 
 /* GPIO device specification */
 /**
@@ -138,16 +139,12 @@ static void super_thread_entry(void *p1, void *p2, void *p3)
 	ret = gpio_pin_configure_dt(&prx_switch, GPIO_INPUT);
 	if (ret < 0) {
 		LOG_ERR("Failed to configure proximity switch (err %d)", ret);
-	} else {
-		LOG_INF("Proximity switch configured");
 	}
 
 	const struct gpio_dt_spec stop = GPIO_DT_SPEC_GET(STOP_BUTTON, gpios);
 	ret = gpio_pin_configure_dt(&stop, GPIO_INPUT);
 	if (ret < 0) {
 		LOG_ERR("Failed to configure stop button (err %d)", ret);
-	} else {
-		LOG_INF("stop button configured");
 	}
 
 	const struct gpio_dt_spec runled = GPIO_DT_SPEC_GET(RUNING_LED, gpios);
@@ -160,14 +157,14 @@ static void super_thread_entry(void *p1, void *p2, void *p3)
 	statemachine_init(&elevator_handle, "superlift_fsm", superlift_Idle, NULL, NULL, 0);
 	const struct device *motor = DEVICE_DT_GET(DT_NODELABEL(motor0));
 
-	const struct device *const ina = DEVICE_DT_GET_ONE(ti_ina226);
-	struct sensor_value v_bus, power, current;
-	int rc;
+	// const struct device *const ina = DEVICE_DT_GET_ONE(ti_ina226);
+	// struct sensor_value v_bus, power, current;
+	// int rc;
 
-	if (!device_is_ready(ina)) {
-		printf("Device %s is not ready.\n", ina->name);
-		return;
-	}
+	// if (!device_is_ready(ina)) {
+	// 	LOG_ERR("Device %s is not ready.\n", ina->name);
+	// 	return;
+	// }
 	/* Main control loop */
 	while (1) {
 		/* Toggle watchdog */
@@ -243,11 +240,11 @@ static fsm_rt_t superlift_NoReady(fsm_cb_t *obj)
 		break;
 	case ELEVATOR_WAIT:
 		if (motor_get_state(motor) != MOTOR_STATE_READY) {
-			motor_set_state(motor, MOTOR_CMD_SET_ENABLE);
+			motor_set_state(motor, MOTOR_STATE_READY);
 			break;
 		}
 		gpio_pin_set_dt(&mot12_brk, 1);
-		motor_set_state(motor, MOTOR_CMD_SET_START);
+		motor_set_state(motor, MOTOR_STATE_CLOSED_LOOP);
 		motor_set_target_speed(motor, 2.5f);
 		obj->chState = ELEVATOR_FINDZERO;
 		break;
@@ -264,7 +261,7 @@ static fsm_rt_t superlift_NoReady(fsm_cb_t *obj)
 
 	case EXIT:
 		gpio_pin_set_dt(&mot12_brk, 0);
-		motor_set_state(motor, MOTOR_CMD_SET_DISABLE);
+		motor_set_state(motor, MOTOR_STATE_STOP);
 		break;
 	default:
 		break;
@@ -285,14 +282,14 @@ static fsm_rt_t superlift_ZeroPoint(fsm_cb_t *obj)
 	int8_t stop_state;
 	switch (obj->chState) {
 	case ENTER:
-		LOG_INF("enter ZeroPoint motor_mode:%d", motor_get_mode(motor));
+		LOG_DBG("enter ZeroPoint motor_mode:%d", motor_get_mode(motor));
 
 		if (motor_get_mode(motor) != MOTOR_MODE_POSI) {
 			motor_set_mode(motor, MOTOR_MODE_POSI);
 			break;
 		}
 		gpio_pin_set_dt(&mot12_brk, 0);
-		motor_set_state(motor, MOTOR_CMD_SET_DISABLE);
+		motor_set_state(motor, MOTOR_STATE_STOP);
 		obj->chState = RUNING;
 		break;
 	case RUNING:
@@ -312,10 +309,10 @@ static fsm_rt_t superlift_ZeroPoint(fsm_cb_t *obj)
 		if (motor_get_state(motor) != MOTOR_STATE_READY) {
 			float posi = -RISING_DIS;
 			motor_set_target_position(motor, 0.0f, posi, 5.0f);
-			motor_set_state(motor, MOTOR_CMD_SET_ENABLE);
+			motor_set_state(motor, MOTOR_STATE_READY);
 			break;
 		}
-		motor_set_state(motor, MOTOR_CMD_SET_START);
+		motor_set_state(motor, MOTOR_STATE_CLOSED_LOOP);
 		obj->chState = READY1;
 		break;
 	case READY1:
@@ -324,7 +321,7 @@ static fsm_rt_t superlift_ZeroPoint(fsm_cb_t *obj)
 		}
 		break;
 	case EXIT:
-		LOG_INF("exit ZeroPoint");
+		LOG_DBG("exit ZeroPoint");
 		break;
 	default:
 		break;
@@ -349,7 +346,7 @@ static fsm_rt_t superlift_Rising(fsm_cb_t *obj)
 
 	switch (obj->chState) {
 	case ENTER:
-		LOG_INF("enter Rising");
+		LOG_DBG("enter Rising");
 		conut = 0;
 		obj->chState = RUNING;
 		break;
@@ -370,7 +367,7 @@ static fsm_rt_t superlift_Rising(fsm_cb_t *obj)
 		}
 		break;
 	case EXIT:
-		LOG_INF("exit Rising");
+		LOG_DBG("exit Rising");
 		break;
 	default:
 		break;
@@ -393,9 +390,9 @@ static fsm_rt_t superlift_HigPoint(fsm_cb_t *obj)
 
 	switch (obj->chState) {
 	case ENTER:
-		LOG_INF("enter HigPoint");
+		LOG_DBG("enter HigPoint");
 		gpio_pin_set_dt(&mot12_brk, 0);
-		motor_set_state(motor, MOTOR_CMD_SET_DISABLE);
+		motor_set_state(motor, MOTOR_STATE_STOP);
 		obj->chState = RUNING;
 		break;
 	case RUNING:
@@ -414,14 +411,14 @@ static fsm_rt_t superlift_HigPoint(fsm_cb_t *obj)
 			float posi;
 			posi = motor_get_current_position(motor);
 			motor_set_target_position(motor, posi, 0.0f, 5.0);
-			motor_set_state(motor, MOTOR_CMD_SET_ENABLE);
+			motor_set_state(motor, MOTOR_STATE_READY);
 			break;
 		}
-		motor_set_state(motor, MOTOR_CMD_SET_START);
+		motor_set_state(motor, MOTOR_STATE_CLOSED_LOOP);
 		TRAN_STATE(&elevator_handle, superlift_Falling);
 		break;
 	case EXIT:
-		LOG_INF("exit HigPoint");
+		LOG_DBG("exit HigPoint");
 		break;
 	default:
 		break;
@@ -446,7 +443,7 @@ static fsm_rt_t superlift_Falling(fsm_cb_t *obj)
 
 	switch (obj->chState) {
 	case ENTER:
-		LOG_INF("enter Falling");
+		LOG_DBG("enter Falling");
 		obj->chState = RUNING;
 		break;
 	case RUNING:
@@ -461,7 +458,7 @@ static fsm_rt_t superlift_Falling(fsm_cb_t *obj)
 		TRAN_STATE(&elevator_handle, superlift_ZeroPoint);
 		break;
 	case EXIT:
-		LOG_INF("exit Falling");
+		LOG_DBG("exit Falling");
 		break;
 	default:
 		break;
@@ -487,8 +484,8 @@ static fsm_rt_t superlift_EmergencyStop(fsm_cb_t *obj)
 	switch (obj->chState) {
 	case ENTER:
 		gpio_pin_set_dt(&mot12_brk, 0);
-		motor_set_state(motor, MOTOR_CMD_SET_DISABLE);
-		LOG_INF("enter EmergencyStop");
+		motor_set_state(motor, MOTOR_STATE_STOP);
+		LOG_DBG("enter EmergencyStop");
 		obj->chState = RUNING;
 		break;
 	case RUNING:
@@ -509,14 +506,14 @@ static fsm_rt_t superlift_EmergencyStop(fsm_cb_t *obj)
 					float posi;
 					posi = motor_get_current_position(motor);
 					motor_set_target_position(motor, posi, -RISING_DIS, 5.0f);
-					motor_set_state(motor, MOTOR_CMD_SET_ENABLE);
+					motor_set_state(motor, MOTOR_STATE_READY);
 					obj->chState = SET_RISING_DIS;
 				} else if (conctrl_cmd == FALLING_CMD) {
 					gpio_pin_set_dt(&mot12_brk, 1);
 					float posi;
 					posi = motor_get_current_position(motor);
 					motor_set_target_position(motor, posi, 0.0f, 5.0f);
-					motor_set_state(motor, MOTOR_CMD_SET_ENABLE);
+					motor_set_state(motor, MOTOR_STATE_READY);
 					obj->chState = SET_FALLING_DIS;
 				}
 				break;
@@ -524,16 +521,16 @@ static fsm_rt_t superlift_EmergencyStop(fsm_cb_t *obj)
 		}
 		break;
 	case SET_RISING_DIS:
-		motor_set_state(motor, MOTOR_CMD_SET_START);
+		motor_set_state(motor, MOTOR_STATE_CLOSED_LOOP);
 		obj->chState = SET_RISING_MOTOR_ENABLE;
 		break;
 	case SET_FALLING_DIS:
-		motor_set_state(motor, MOTOR_CMD_SET_START);
+		motor_set_state(motor, MOTOR_STATE_CLOSED_LOOP);
 		obj->chState = SET_FALLING_MOTOR_ENABLE;
 		break;
 	case SET_RISING_MOTOR_ENABLE:
 		if (motor_get_state(motor) == MOTOR_STATE_CLOSED_LOOP) {
-			LOG_INF("motor enter close loop");
+			LOG_DBG("motor enter close loop");
 		}
 		TRAN_STATE(obj, superlift_Rising);
 		break;
@@ -541,7 +538,7 @@ static fsm_rt_t superlift_EmergencyStop(fsm_cb_t *obj)
 		TRAN_STATE(obj, superlift_Falling);
 		break;
 	case EXIT:
-		LOG_INF("exit EmergencyStop");
+		LOG_DBG("exit EmergencyStop");
 		break;
 	default:
 		break;
@@ -558,9 +555,9 @@ static fsm_rt_t superlift_Motorfault(fsm_cb_t *obj)
 	static uint16_t motor_count = 0;
 	switch (obj->chState) {
 	case ENTER:
-		LOG_INF("enter Motorfault");
+		LOG_DBG("enter Motorfault");
 		gpio_pin_set_dt(&mot12_brk, 0);
-		motor_set_state(motor, MOTOR_CMD_SET_DISABLE);
+		motor_set_state(motor, MOTOR_STATE_STOP);
 		motor_count = 0;
 		obj->chState = RUNING;
 		break;
@@ -571,11 +568,12 @@ static fsm_rt_t superlift_Motorfault(fsm_cb_t *obj)
 				sys_reboot(SYS_REBOOT_COLD);
 			}
 		} else {
+			LOG_DBG("falut code = %d", motor_get_falutcode(motor));
 			motor_count = 0;
 		}
 		break;
 	case EXIT:
-		LOG_INF("exit Motorfault");
+		LOG_DBG("exit Motorfault");
 		break;
 	default:
 		break;
@@ -590,7 +588,7 @@ static fsm_rt_t superlift_Idle(fsm_cb_t *obj)
 
 	switch (obj->chState) {
 	case ENTER:
-		LOG_INF("enter Superlift Idle");
+		LOG_DBG("enter Superlift Idle");
 		obj->chState = RUNING;
 		break;
 	case RUNING:
@@ -600,7 +598,7 @@ static fsm_rt_t superlift_Idle(fsm_cb_t *obj)
 		}
 		break;
 	case EXIT:
-		LOG_INF("exit Superlift Idle");
+		LOG_DBG("exit Superlift Idle");
 		break;
 	default:
 		break;

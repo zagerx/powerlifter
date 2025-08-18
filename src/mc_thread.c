@@ -23,7 +23,9 @@
 #include <zephyr/sys/reboot.h>
 
 /* Module logging setup */
-LOG_MODULE_REGISTER(motor_thread, LOG_LEVEL_DBG);
+#define LOG_LEVEL CONFIG_MOTOR_LIB_LOG_LEVEL
+#include <zephyr/logging/log.h>
+LOG_MODULE_REGISTER(motor_thread);
 
 /* Thread stack definition */
 K_THREAD_STACK_DEFINE(motor_thread_stack, 2048);
@@ -49,7 +51,8 @@ static struct k_thread mc_thread; ///< Thread control block
  * 3. Maintains watchdog timer
  */
 extern void motor_set_vol(const struct device *motor, float *bus_vol);
-
+extern void motor_set_falutstate(const struct device *motor, enum motor_fault_code code);
+extern enum motor_fault_code motor_get_falutcode(const struct device *motor);
 static void motor_thread_entry(void *p1, void *p2, void *p3)
 {
 	const struct device *motor0 = DEVICE_DT_GET(DT_NODELABEL(motor0));
@@ -84,33 +87,38 @@ static void motor_thread_entry(void *p1, void *p2, void *p3)
 	fmm_init(bus_vol_fmm, 60.0f, 48.0f, 5, 5, NULL);
 	fmm_init(buf_curr_fmm, 5.0f, 0.0f, 5, 5, NULL);
 
-	// static int16_t fault_fsm = 0;
-	/* Main control loop */
+	static int16_t fault_fsm = 0;
 	while (1) {
 		motor_get_bus_voltage_current(motor0, &bus_volcurur[0], &bus_volcurur[1]);
 		motor_set_vol(motor0, bus_volcurur);
 
-		// fmm_monitoring(bus_vol_fmm, bus_volcurur[0]);
-		// fmm_monitoring(buf_curr_fmm, bus_volcurur[1]);
+		fmm_monitoring(bus_vol_fmm, bus_volcurur[0]);
+		fmm_monitoring(buf_curr_fmm, bus_volcurur[1]);
 
-		// switch (fault_fsm) {
-		// case 1:
-		// 	if (fmm_readstatus(bus_vol_fmm) == FMM_NORMAL &&
-		// 	    fmm_readstatus(buf_curr_fmm) == FMM_NORMAL) { // 判断是否恢复
-		// 		fault_fsm = 0;
-		// 		motor_set_state(motor0, MOTOR_CMD_SET_IDLE);
-		// 	}
-		// 	break;
-		// case 0: // 判断是否有故障
-		// 	if (fmm_readstatus(bus_vol_fmm) == FMM_FAULT ||
-		// 	    fmm_readstatus(buf_curr_fmm) == FMM_FAULT) {
-		// 		fault_fsm = 1;
-		// 		motor_set_state(motor0, MOTOR_CMD_SET_VOLFAULT);
-		// 	}
-		// 	break;
-		// default:
-		// 	break;
-		// }
+		switch (fault_fsm) {
+		case 1:
+			if (fmm_readstatus(bus_vol_fmm) == FMM_NORMAL &&
+			    fmm_readstatus(buf_curr_fmm) == FMM_NORMAL) { // 判断是否恢复
+				fault_fsm = 0;
+				motor_set_falutstate(motor0, MOTOR_FAULTCODE_NOERR);
+				motor_set_state(motor0, MOTOR_STATE_IDLE);
+			}
+			break;
+		case 0: // 判断是否有故障
+			if (fmm_readstatus(bus_vol_fmm) == FMM_FAULT) {
+				fault_fsm = 1;
+				motor_set_falutstate(motor0, MOTOR_FAULTCODE_UNDERVOL);
+				motor_set_state(motor0, MOTOR_STATE_FAULT);
+			} else if (fmm_readstatus(buf_curr_fmm) == FMM_FAULT) {
+				fault_fsm = 1;
+				motor_set_falutstate(motor0, MOTOR_FAULTCODE_OVERCURRMENT);
+				motor_set_state(motor0, MOTOR_STATE_FAULT);
+			} else {
+			}
+			break;
+		default:
+			break;
+		}
 
 		DISPATCH_FSM(m_data->mode_state_mec);
 		gpio_pin_toggle_dt(&w_dog);

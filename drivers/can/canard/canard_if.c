@@ -366,9 +366,9 @@ static void handle_motor_enable(CanardRxTransfer *transfer)
 
 		// 执行电机控制
 		if (req.enable_state == 0) {
-			// motor_cmd_set(MOTOR_CMD_SET_ENABLE,0,0);
+			// motor_cmd_set(MOTOR_STATE_READY,0,0);
 		} else {
-			// motor_cmd_set(MOTOR_CMD_SET_DISABLE,0,0);
+			// motor_cmd_set(MOTOR_STATE_STOP,0,0);
 		}
 		// 发送响应
 		dinosaurs_actuator_wheel_motor_Enable_Response_1_0 resp = {
