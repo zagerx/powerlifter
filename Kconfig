@@ -1,10 +1,7 @@
+#// clang-format off
 #motor / Kconfig
 #必须包含 Zephyr 的主 Kconfig 以初始化核心配置
 source "Kconfig.zephyr" 
-rsource "../modules/lib/motorlib/lib/Kconfig" 
-rsource "../modules/lib/motorlib/lib/motor/Kconfig.motor" 
 rsource "drivers/gpio/Kconfig.tca9539" 
-
-rsource "Kconfig.app"
-rsource "../modules/lib/motorlib/Kconfig.motorlib" 
-
+rsource "../modules/lib/motorlib/Kconfig"
+#// clang-format on
