@@ -1,0 +1,29 @@
+# Copyright (c) 2018, Aapo Vienamo
+# Copyright (c) 2021, Laird Connectivity
+# SPDX-License-Identifier: Apache-2.0
+
+description: TCA9539 GPIO node
+
+compatible: "ti,tca9539"
+
+include: [gpio-controller.yaml, i2c-device.yaml]
+
+properties:
+  has-pud:
+    type: boolean
+    description: Supports pull-up/pull-down
+
+  has-interrupt-mask-reg:
+    type: boolean
+    description: Has Interrupt mask register (TCA95xx)
+
+  interrupt-gpios:
+    type: phandle-array
+    description: Interrupt GPIO pin (active-low open-drain)
+
+  "#gpio-cells":
+    const: 2
+
+gpio-cells:
+  - pin
+  - flags

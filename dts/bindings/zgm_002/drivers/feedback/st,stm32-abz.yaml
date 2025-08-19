@@ -1,0 +1,45 @@
+# Copyright (c) 2021, Teslabs Engineering S.L.
+# SPDX-License-Identifier: Apache-2.0
+
+description: |
+  ABZ sensor driver for STM32 microcontrollers.
+
+  The ABZ device is expected to be a children of any STM32 timer supporting
+  the ABZ interface. Example usage:
+
+      &timers2 {
+        status = "okay";
+
+        feedback: feedback {
+            compatible = "st,stm32-abz";
+
+            pinctrl-0 = <&tim2_ch1_pa15 &tim2_ch2_pb3>;
+            pinctrl-names = "default";
+
+            lines = <4096>;
+            pole-pairs = <15>;
+        };
+      };
+
+compatible: "st,stm32-abz"
+
+include: [base.yaml, pinctrl-device.yaml]
+
+properties:
+  pinctrl-0:
+    required: true
+
+  pinctrl-names:
+    required: true
+
+  lines:
+    type: int
+    default: 4096
+    description: |
+      number of encoder lines
+
+  pole-pairs:
+    type: int
+    default: 15
+    description: |
+      number of encoder pole pairs

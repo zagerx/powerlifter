@@ -1,0 +1,16 @@
+description: STM32 Hall Sensor Configuration
+
+compatible: "st,stm32-hall"
+include: [base.yaml, pinctrl-device.yaml]
+properties:
+  hu-gpios:
+    type: phandle-array
+    required: true
+  hv-gpios:
+    type: phandle-array
+    required: true    
+  hw-gpios:
+    type: phandle-array
+    required: true    
+
+description: Hall sensor phase configuration

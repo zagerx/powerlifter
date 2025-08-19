@@ -1,0 +1,27 @@
+# Copyright (c) 2021, Teslabs Engineering S.L.
+# SPDX-License-Identifier: Apache-2.0
+
+description: |
+  STM32S PWM device with unified timing parameters.
+
+compatible: "st,stm32-pwm-custom"
+
+include: [base.yaml, pinctrl-device.yaml]
+
+properties:
+  pinctrl-0:
+    required: true
+  pinctrl-names:
+    required: true
+  timing-params:
+    type: array
+    required: true
+    description: |
+      PWM timing parameters array:
+      Index 0 - t_dead_ns (dead time in nanoseconds)
+      Index 1 - arr (auto-reload value)
+      Index 2 - psc (prescaler value)
+  slave:
+    type: int
+    required: true
+    description: Slave mode enable flag

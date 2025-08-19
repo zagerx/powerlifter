@@ -1,0 +1,271 @@
+/*
+ * Copyright (c) 2020 Alexander Kozhinov <ak.alexander.kozhinov@gmail.com>
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/dts-v1/;
+#include <st/h7/stm32h723Xg.dtsi>
+#include <st/h7/stm32h723vgtx-pinctrl.dtsi>
+
+/*
+ * WARNING:
+ * JP6 and SB72 must be ON when using Ethernet.
+ */
+
+/ {
+	model = "STMicroelectronics STM32H723ZG-NUCLEO board";
+	compatible = "st,stm32h723zg-nucleo";
+
+	chosen {
+		zephyr,console = &usart1;
+		zephyr,shell-uart = &usart1;
+		zephyr,dtcm = &dtcm;
+		zephyr,sram = &sram0;
+		zephyr,flash = &flash0;
+		zephyr,canbus = &fdcan1;
+	};
+
+	leds: leds {
+		compatible = "gpio-leds";
+		
+
+		green_led: led_0 {
+			gpios = <&gpioe 1 GPIO_ACTIVE_HIGH>;
+			label = "User LD1";
+		};
+		mot12_brk_pin: led_1 {
+			gpios = <&gpiob 3 GPIO_ACTIVE_HIGH>;
+			label = "User LD2";
+		};
+		encoder_vcc: led_2 {
+			gpios = <&gpiod 3 GPIO_ACTIVE_HIGH>;
+			label = "User LD2";
+		};	
+		wdog: led_3 {
+			gpios = <&gpioe 7 GPIO_ACTIVE_HIGH>;
+			label = "User LD4";
+		};				
+		proximity_switch:led_4{
+			gpios = <&gpiod 11 GPIO_ACTIVE_HIGH>;
+			label = "User LD5";
+		};
+		stopbutton:led_5{
+			gpios = <&gpiod 4 GPIO_ACTIVE_HIGH>;
+			label = "User LD6";
+		};
+		run_led: led_6 {
+			gpios = <&gpio_exp0 9 GPIO_ACTIVE_HIGH>;
+			label = "User LD7";
+		};	
+	};
+
+	aliases {
+		led0 = &green_led;
+	};
+    motors {
+        motor0: motor_0 {
+			compatible = "motor-bldc";
+			control-algorithm = <&foc0>;
+			feedback = <&abz_hall0>;  // 添加feedback属性
+			currsmp = <&currsmp0>;
+			pwm = <&pwm1>;
+			status = "okay";
+        };
+        motor1: motor_1 {
+			compatible = "motor-bldc";
+			control-algorithm = <&foc1>;
+			feedback = <&abz_hall1>;  // 添加feedback属      
+			currsmp = <&currsmp1>;
+			pwm = <&pwm8>;			
+		    status = "disabled";
+        };
+    };
+	control_algorithm {
+		foc0:ctrl_algo0{
+			compatible = "foc-ctrl-algo";
+			modulate = <1>;
+			status = "okay";
+		};
+		foc1:ctrl_algo1{
+			compatible = "foc-ctrl-algo";
+			modulate = <0>;
+			status = "okay";
+		};
+	};
+};
+
+&clk_lsi {
+	status = "okay";
+};
+
+&clk_hsi48 {
+	status = "okay";
+};
+
+&clk_hse {
+	clock-frequency = <DT_FREQ_M(12)>; /* STLink 12MHz clock */
+	status = "okay";
+};
+
+&clk_lse {
+	status = "disabled";
+};
+
+&pll {
+	div-m = <6>;
+	mul-n = <275>;
+	div-p = <1>;
+	div-q = <4>;
+	div-r = <2>;
+	clocks = <&clk_hse>;
+	status = "okay";
+};
+
+&pll2 {
+	div-m = <1>;
+	mul-n = <10>;
+	div-p = <1>;
+	div-q = <1>;
+	div-r = <1>;
+	clocks = <&clk_hse>;
+	status = "okay";
+};
+
+&rcc {
+	clocks = <&pll>;
+	clock-frequency = <DT_FREQ_M(550)>;
+	d1cpre = <1>;
+	hpre = <2>;    /* HCLK: 275   MHz */
+	d1ppre = <2>;  /* APB1: 137.5 MHz */
+	d2ppre1 = <2>; /* APB2: 137.5 MHz */
+	d2ppre2 = <2>; /* APB3: 137.5 MHz */
+	d3ppre = <2>;  /* APB4: 137.5 MHz */
+};
+
+
+&usart1 {
+	pinctrl-0 = <&usart1_tx_pa9 &usart1_rx_pa10>;
+	pinctrl-names = "default";
+	current-speed = <115200>;
+	status = "okay";
+};
+
+&timers1 {
+    pwm1: pwm {
+        compatible = "st,stm32-pwm-custom";
+        pinctrl-0 = <&tim1_ch1_pe9  &tim1_ch1n_pe8
+                    &tim1_ch2_pe11 &tim1_ch2n_pe10
+                    &tim1_ch3_pe13 &tim1_ch3n_pe12>;
+        pinctrl-names = "default";
+        timing-params = <120 13750 0>;  // t_dead_ns, arr, psc
+        slave = <0>;
+        status = "okay";
+    };
+};
+
+&timers8 {
+    pwm8: pwm {
+        compatible = "st,stm32-pwm-custom";
+        pinctrl-0 = <&tim8_ch1_pc6 &tim8_ch1n_pa7
+                    &tim8_ch2_pc7 &tim8_ch2n_pb14
+                    &tim8_ch3_pc8 &tim8_ch3n_pb15>;
+        pinctrl-names = "default";
+        timing-params = <120 13750 0>;  // t_dead_ns, arr, psc
+        slave = <1>;
+        status = "okay";
+    };
+};
+
+
+&timers4 {
+	abz_hall0: abz_hall {
+		compatible = "st,stm32-abz-hall";
+		pinctrl-0 = <&tim4_ch1_pb6 &tim4_ch2_pb7>;
+		pinctrl-names = "default";		
+		lines = <4096>;
+		pole-pairs = <15>;
+		hu-gpios = <&gpiod 1 GPIO_ACTIVE_HIGH>;
+		hv-gpios = <&gpiob 2 GPIO_ACTIVE_HIGH>;
+		hw-gpios = <&gpiod 0 GPIO_ACTIVE_HIGH>;		
+		
+		status = "okay";
+	};	
+
+};
+&timers3 {
+	abz_hall1: abz_hall {
+		compatible = "st,stm32-abz-hall";
+		pinctrl-0 = <&tim3_ch1_pb4 &tim3_ch2_pb5>;
+		pinctrl-names = "default";
+
+
+		lines = <4096>;
+		pole-pairs = <15>;
+		hu-gpios = <&gpioc 14 GPIO_ACTIVE_HIGH>;
+		hv-gpios = <&gpioc 15 GPIO_ACTIVE_HIGH>;
+		hw-gpios = <&gpiob 12 GPIO_ACTIVE_HIGH>;		
+		status = "okay";
+	};
+};
+
+&adc1 {
+	currsmp0: currsmp {
+		compatible = "st,stm32-currsmp-shunt";
+		pinctrl-0 = <&adc1_inp15_pa3  &adc1_inp4_pc4 &adc1_inp16_pa0  &adc1_inp17_pa1 &adc1_inp14_pa2>;
+		pinctrl-names = "default";
+		adc-channels = <15 4 16 17 14>;
+		adc-slave = <0>;
+		status = "okay";
+	};
+};
+
+&adc2 {
+	currsmp1: currsmp {
+		compatible = "st,stm32-currsmp-shunt";
+		pinctrl-0 = <&adc2_inp8_pc5  &adc2_inp9_pb0 &adc2_inp5_pb1>;
+		pinctrl-names = "default";
+		adc-channels = <8 9 5>;
+		adc-slave = <1>;
+		status = "okay";
+	};
+};
+
+&backup_sram {
+	status = "okay";
+};
+
+&fdcan1 {
+	pinctrl-0 = <&fdcan1_rx_pa11 &fdcan1_tx_pa12>;
+	pinctrl-names = "default";
+	clocks = <&rcc STM32_CLOCK_BUS_APB1_2 0x00000100>,
+		 <&rcc STM32_SRC_PLL2_Q FDCAN_SEL(2)>;
+	status = "okay";
+};
+&i2c2 {
+	pinctrl-0 = <&i2c2_scl_pb10 &i2c2_sda_pb11>;
+	pinctrl-names = "default";
+	status = "okay";
+	clock-frequency = <I2C_BITRATE_FAST>;
+
+	ina226@40 {
+		compatible = "ti,ina226";
+		reg = <0x40>;
+		
+		current-lsb-microamps = <610>;
+		rshunt-micro-ohms = <2000>;
+		
+		/* 优化配置 */
+		avg-count = <16>;
+		vbus-conversion-time-us = <1100>;
+		vshunt-conversion-time-us = <1100>;
+		operating-mode = "Shunt and Bus, Continuous";
+	};
+	gpio_exp0: tca9539@74 {
+		compatible = "ti,tca9539";
+		reg = <0x74>;
+		gpio-controller;
+		#gpio-cells = <2>;
+		ngpios = <16>;
+		status = "okay";
+	};	
+};

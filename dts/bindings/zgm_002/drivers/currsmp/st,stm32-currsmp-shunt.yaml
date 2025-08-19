@@ -1,0 +1,68 @@
+# Copyright (c) 2021, Teslabs Engineering S.L.
+# SPDX-License-Identifier: Apache-2.0
+
+description: |
+  STM32 shunt current sampling driver.
+
+  The shunt current sampling device is expected to be a children of any STM32
+  ADC supporting injected conversions. Example usage:
+
+    &adc1 {
+      currsmp: currsmp {
+        compatible = "st,stm32-currsmp-shunt";
+        pinctrl-0 = <&adc1_in1_pa0 &adc1_in7_pc1 &adc1_in6_pc0>;
+        pinctrl-names = "default";
+
+        adc-resolution = <12>;
+        adc-tsample-us = <2>;
+        adc-channels = <1 7 6>;
+        adc-trigger = <STM32_ADC_INJ_TRIG_TIM1_TRGO>;
+      };
+    };
+
+compatible: "st,stm32-currsmp-shunt"
+
+include: [base.yaml, pinctrl-device.yaml]
+
+properties:
+  pinctrl-0:
+    required: true
+
+  pinctrl-names:
+    required: true
+
+  adc-resolution:
+    type: int
+    required: false
+    description: |
+      ADC resolution in bits. Available resolutions can differ depending on
+      the selected SoC family.
+
+  adc-tsample:
+    type: int
+    required: false
+    description: |
+      ADC sampling time in cycles. Decimal sampling times must be rounded
+      up, e.g. 19.5 needs to be provided as 20. Available sample times can
+      differ depending on the SoC family.
+
+  adc-channels:
+    type: array
+    required: false
+    description: |
+      ADC channels (a, b, c).
+
+  adc-trigger:
+    type: int
+    required: false
+    description: |
+      External trigger for the injected ADC conversions. The external trigger
+      must be an output of the timer used for SV-PWM.
+
+      Definitions available at dts-bindings/adc/stm32fxxx.h files.
+  adc-slave:
+    type: int
+    required: false
+    description: |
+      Timer slave mode flag, default 0 (master mode)
+

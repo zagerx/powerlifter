@@ -1,0 +1,12 @@
+# Copyright 2023 SyriusRobotics
+# SPDX-License-Identifier: Apache-2.0
+
+description: Motor Control Algorithm 
+
+compatible: "foc-ctrl-algo"
+
+properties:
+  modulate:
+    type: int
+    required: true
+    description: FOC SVPWM FLAG  
