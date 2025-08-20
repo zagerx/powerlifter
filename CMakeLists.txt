@@ -16,11 +16,9 @@ list(APPEND ZEPHYR_EXTRA_MODULES
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 project(super)
 
-# 添加子目录，假设 drivers/can 是当前项目的子目录
-add_subdirectory(drivers/can)
+#add_subdirectory(drivers/can)
 add_subdirectory(drivers/gpio)
 
-# 添加源文件到 app target
 target_sources(app PRIVATE
     src/main.c
     src/mc_thread.c
