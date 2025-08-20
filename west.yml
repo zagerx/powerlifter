@@ -16,8 +16,8 @@ manifest:
     - name: zephyr
       remote: github
       repo-path: zephyrproject-rtos/zephyr
-      import: submanifests      
       revision: v4.1.0
+      import: submanifests
       import:
         name-allowlist:
           - cmsis

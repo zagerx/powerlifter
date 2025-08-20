@@ -18,9 +18,13 @@ project(super)
 
 #add_subdirectory(drivers/can)
 add_subdirectory(drivers/gpio)
+if(CONFIG_UAVCAN_ENABLE)
+    zephyr_library_sources(${CMAKE_CURRENT_SOURCE_DIR}/src/super_thread.c)
+endif()
+if(CONFIG_MOTORLIB_ENABLE)
+    zephyr_library_sources(${CMAKE_CURRENT_SOURCE_DIR}/src/mc_thread.c)
+endif()
 
 target_sources(app PRIVATE
     src/main.c
-    src/mc_thread.c
-    src/super_thread.c
 )
