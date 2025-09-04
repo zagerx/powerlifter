@@ -1,0 +1,11 @@
+description: BLDC 电机编码器
+
+compatible: "st-feedback"
+
+include: [base.yaml]
+
+properties:
+  feedback:    
+    type: phandle
+    required: true 
+    description: Motor Encoder          

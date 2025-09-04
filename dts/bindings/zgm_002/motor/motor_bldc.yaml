@@ -8,10 +8,6 @@ compatible: "motor-bldc"
 include: [base.yaml]
 
 properties:
-  control-algorithm:
-    type: phandle
-    required: true
-    description: 指向 FOC 控制算法的句柄
   currsmp:
     type: phandle
     required: true

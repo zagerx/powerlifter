@@ -30,8 +30,8 @@ LOG_MODULE_REGISTER(motor_thread);
 /* Thread stack definition */
 K_THREAD_STACK_DEFINE(motor_thread_stack, 2048);
 #define MOT12_BRK_PIN_NODE DT_NODELABEL(mot12_brk_pin)
-#define ENCODER_VCC	   DT_NODELABEL(encoder_vcc)
-#define W_DOG		   DT_NODELABEL(wdog)
+#define ENCODER_VCC        DT_NODELABEL(encoder_vcc)
+#define W_DOG              DT_NODELABEL(wdog)
 /**
  * @struct motor_thread_data
  * @brief Motor thread control structure
@@ -51,12 +51,11 @@ static struct k_thread mc_thread; ///< Thread control block
  * 3. Maintains watchdog timer
  */
 extern void motor_set_vol(const struct device *motor, float *bus_vol);
-extern void motor_set_falutstate(const struct device *motor, enum motor_fault_code code);
+extern void motor_set_falutcode(const struct device *motor, enum motor_fault_code code);
 extern enum motor_fault_code motor_get_falutcode(const struct device *motor);
 static void motor_thread_entry(void *p1, void *p2, void *p3)
 {
 	const struct device *motor0 = DEVICE_DT_GET(DT_NODELABEL(motor0));
-	const struct motor_config *cfg = motor0->config;
 	const struct motor_data *m_data = motor0->data;
 
 	int ret;
@@ -82,8 +81,8 @@ static void motor_thread_entry(void *p1, void *p2, void *p3)
 	}
 
 	float bus_volcurur[2];
-	fmm_t *bus_vol_fmm = cfg->fault[0];
-	fmm_t *buf_curr_fmm = cfg->fault[1];
+	fmm_t *bus_vol_fmm = m_data->fault[0];
+	fmm_t *buf_curr_fmm = m_data->fault[1];
 	fmm_init(bus_vol_fmm, 60.0f, 48.0f, 5, 5, NULL);
 	fmm_init(buf_curr_fmm, 5.0f, 0.0f, 5, 5, NULL);
 
@@ -100,18 +99,18 @@ static void motor_thread_entry(void *p1, void *p2, void *p3)
 			if (fmm_readstatus(bus_vol_fmm) == FMM_NORMAL &&
 			    fmm_readstatus(buf_curr_fmm) == FMM_NORMAL) { // 判断是否恢复
 				fault_fsm = 0;
-				motor_set_falutstate(motor0, MOTOR_FAULTCODE_NOERR);
+				motor_set_falutcode(motor0, MOTOR_FAULTCODE_NOERR);
 				motor_set_state(motor0, MOTOR_STATE_IDLE);
 			}
 			break;
 		case 0: // 判断是否有故障
 			if (fmm_readstatus(bus_vol_fmm) == FMM_FAULT) {
 				fault_fsm = 1;
-				motor_set_falutstate(motor0, MOTOR_FAULTCODE_UNDERVOL);
+				motor_set_falutcode(motor0, MOTOR_FAULTCODE_UNDERVOL);
 				motor_set_state(motor0, MOTOR_STATE_FAULT);
 			} else if (fmm_readstatus(buf_curr_fmm) == FMM_FAULT) {
 				fault_fsm = 1;
-				motor_set_falutstate(motor0, MOTOR_FAULTCODE_OVERCURRMENT);
+				motor_set_falutcode(motor0, MOTOR_FAULTCODE_OVERCURRMENT);
 				motor_set_state(motor0, MOTOR_STATE_FAULT);
 			} else {
 			}

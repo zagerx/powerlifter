@@ -3,6 +3,7 @@
 cmake_minimum_required(VERSION 3.20.0)
 set(BOARD_ROOT ${CMAKE_CURRENT_SOURCE_DIR})
 set(DTS_ROOT ${CMAKE_CURRENT_SOURCE_DIR})
+set(DTC_OVERLAY_FILE ${CMAKE_CURRENT_SOURCE_DIR}/../modules/lib/motorlib/drivers/drivers@0.2.overlay)
 
 get_filename_component(MODULES_BASE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../modules/lib" ABSOLUTE)
 

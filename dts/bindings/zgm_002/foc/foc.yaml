@@ -8,5 +8,5 @@ compatible: "foc-ctrl-algo"
 properties:
   modulate:
     type: int
-    required: true
+    required: false 
     description: FOC SVPWM FLAG  

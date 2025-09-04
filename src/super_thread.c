@@ -304,14 +304,15 @@ static fsm_rt_t superlift_ZeroPoint(fsm_cb_t *obj)
 		obj->chState = READY;
 		break;
 	case READY:
-		motor_clear_realodom(motor, 0.0f);
 		gpio_pin_set_dt(&mot12_brk, 1);
 		if (motor_get_state(motor) != MOTOR_STATE_READY) {
-			float posi = -RISING_DIS;
-			motor_set_target_position(motor, 0.0f, posi, 5.0f);
+
 			motor_set_state(motor, MOTOR_STATE_READY);
 			break;
 		}
+		motor_clear_realodom(motor, 0.0f);
+		float posi = -RISING_DIS;
+		motor_set_target_position(motor, 0.0f, posi, 5.0f);
 		motor_set_state(motor, MOTOR_STATE_CLOSED_LOOP);
 		obj->chState = READY1;
 		break;
@@ -408,12 +409,13 @@ static fsm_rt_t superlift_HigPoint(fsm_cb_t *obj)
 	case READY:
 		gpio_pin_set_dt(&mot12_brk, 1);
 		if (motor_get_state(motor) != MOTOR_STATE_READY) {
-			float posi;
-			posi = motor_get_current_position(motor);
-			motor_set_target_position(motor, posi, 0.0f, 5.0);
+
 			motor_set_state(motor, MOTOR_STATE_READY);
 			break;
 		}
+		float posi;
+		posi = motor_get_current_position(motor);
+		motor_set_target_position(motor, posi, 0.0f, 5.0);
 		motor_set_state(motor, MOTOR_STATE_CLOSED_LOOP);
 		TRAN_STATE(&elevator_handle, superlift_Falling);
 		break;
@@ -503,16 +505,12 @@ static fsm_rt_t superlift_EmergencyStop(fsm_cb_t *obj)
 				   obj->previous_state == superlift_Falling) {
 				if (conctrl_cmd == RISING_CMD) {
 					gpio_pin_set_dt(&mot12_brk, 1);
-					float posi;
-					posi = motor_get_current_position(motor);
-					motor_set_target_position(motor, posi, -RISING_DIS, 5.0f);
+
 					motor_set_state(motor, MOTOR_STATE_READY);
 					obj->chState = SET_RISING_DIS;
 				} else if (conctrl_cmd == FALLING_CMD) {
 					gpio_pin_set_dt(&mot12_brk, 1);
-					float posi;
-					posi = motor_get_current_position(motor);
-					motor_set_target_position(motor, posi, 0.0f, 5.0f);
+
 					motor_set_state(motor, MOTOR_STATE_READY);
 					obj->chState = SET_FALLING_DIS;
 				}
@@ -520,14 +518,20 @@ static fsm_rt_t superlift_EmergencyStop(fsm_cb_t *obj)
 			}
 		}
 		break;
-	case SET_RISING_DIS:
+	case SET_RISING_DIS: {
+		float posi;
+		posi = motor_get_current_position(motor);
+		motor_set_target_position(motor, posi, -RISING_DIS, 5.0f);
 		motor_set_state(motor, MOTOR_STATE_CLOSED_LOOP);
 		obj->chState = SET_RISING_MOTOR_ENABLE;
-		break;
-	case SET_FALLING_DIS:
+	} break;
+	case SET_FALLING_DIS: {
+		float posi;
+		posi = motor_get_current_position(motor);
+		motor_set_target_position(motor, posi, 0.0f, 5.0f);
 		motor_set_state(motor, MOTOR_STATE_CLOSED_LOOP);
 		obj->chState = SET_FALLING_MOTOR_ENABLE;
-		break;
+	} break;
 	case SET_RISING_MOTOR_ENABLE:
 		if (motor_get_state(motor) == MOTOR_STATE_CLOSED_LOOP) {
 			LOG_DBG("motor enter close loop");

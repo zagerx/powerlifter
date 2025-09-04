@@ -62,36 +62,6 @@
 	aliases {
 		led0 = &green_led;
 	};
-    motors {
-        motor0: motor_0 {
-			compatible = "motor-bldc";
-			control-algorithm = <&foc0>;
-			feedback = <&abz_hall0>;  // 添加feedback属性
-			currsmp = <&currsmp0>;
-			pwm = <&pwm1>;
-			status = "okay";
-        };
-        motor1: motor_1 {
-			compatible = "motor-bldc";
-			control-algorithm = <&foc1>;
-			feedback = <&abz_hall1>;  // 添加feedback属      
-			currsmp = <&currsmp1>;
-			pwm = <&pwm8>;			
-		    status = "disabled";
-        };
-    };
-	control_algorithm {
-		foc0:ctrl_algo0{
-			compatible = "foc-ctrl-algo";
-			modulate = <1>;
-			status = "okay";
-		};
-		foc1:ctrl_algo1{
-			compatible = "foc-ctrl-algo";
-			modulate = <0>;
-			status = "okay";
-		};
-	};
 };
 
 &clk_lsi {
@@ -150,85 +120,6 @@
 	status = "okay";
 };
 
-&timers1 {
-    pwm1: pwm {
-        compatible = "st,stm32-pwm-custom";
-        pinctrl-0 = <&tim1_ch1_pe9  &tim1_ch1n_pe8
-                    &tim1_ch2_pe11 &tim1_ch2n_pe10
-                    &tim1_ch3_pe13 &tim1_ch3n_pe12>;
-        pinctrl-names = "default";
-        timing-params = <120 13750 0>;  // t_dead_ns, arr, psc
-        slave = <0>;
-        status = "okay";
-    };
-};
-
-&timers8 {
-    pwm8: pwm {
-        compatible = "st,stm32-pwm-custom";
-        pinctrl-0 = <&tim8_ch1_pc6 &tim8_ch1n_pa7
-                    &tim8_ch2_pc7 &tim8_ch2n_pb14
-                    &tim8_ch3_pc8 &tim8_ch3n_pb15>;
-        pinctrl-names = "default";
-        timing-params = <120 13750 0>;  // t_dead_ns, arr, psc
-        slave = <1>;
-        status = "okay";
-    };
-};
-
-
-&timers4 {
-	abz_hall0: abz_hall {
-		compatible = "st,stm32-abz-hall";
-		pinctrl-0 = <&tim4_ch1_pb6 &tim4_ch2_pb7>;
-		pinctrl-names = "default";		
-		lines = <4096>;
-		pole-pairs = <15>;
-		hu-gpios = <&gpiod 1 GPIO_ACTIVE_HIGH>;
-		hv-gpios = <&gpiob 2 GPIO_ACTIVE_HIGH>;
-		hw-gpios = <&gpiod 0 GPIO_ACTIVE_HIGH>;		
-		
-		status = "okay";
-	};	
-
-};
-&timers3 {
-	abz_hall1: abz_hall {
-		compatible = "st,stm32-abz-hall";
-		pinctrl-0 = <&tim3_ch1_pb4 &tim3_ch2_pb5>;
-		pinctrl-names = "default";
-
-
-		lines = <4096>;
-		pole-pairs = <15>;
-		hu-gpios = <&gpioc 14 GPIO_ACTIVE_HIGH>;
-		hv-gpios = <&gpioc 15 GPIO_ACTIVE_HIGH>;
-		hw-gpios = <&gpiob 12 GPIO_ACTIVE_HIGH>;		
-		status = "okay";
-	};
-};
-
-&adc1 {
-	currsmp0: currsmp {
-		compatible = "st,stm32-currsmp-shunt";
-		pinctrl-0 = <&adc1_inp15_pa3  &adc1_inp4_pc4 &adc1_inp16_pa0  &adc1_inp17_pa1 &adc1_inp14_pa2>;
-		pinctrl-names = "default";
-		adc-channels = <15 4 16 17 14>;
-		adc-slave = <0>;
-		status = "okay";
-	};
-};
-
-&adc2 {
-	currsmp1: currsmp {
-		compatible = "st,stm32-currsmp-shunt";
-		pinctrl-0 = <&adc2_inp8_pc5  &adc2_inp9_pb0 &adc2_inp5_pb1>;
-		pinctrl-names = "default";
-		adc-channels = <8 9 5>;
-		adc-slave = <1>;
-		status = "okay";
-	};
-};
 
 &backup_sram {
 	status = "okay";
